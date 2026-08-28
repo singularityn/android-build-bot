@@ -16,7 +16,7 @@ mkdir -p "$TARGET_DIR"
 # 1. Update and install packages
 echo "📦 Installing required dependencies (ttyd, iptables, python3, tmux)..."
 sudo apt-get update -y
-sudo apt-get install -y ttyd tmux iptables-persistent python3-requests python3-pip curl wget
+sudo apt-get install -y ttyd tmux iptables-persistent python3-requests python3-pip curl wget ripgrep
 
 # 2. Install Cloudflare Tunnel (cloudflared)
 if ! command -v cloudflared &> /dev/null; then

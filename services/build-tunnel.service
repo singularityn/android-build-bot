@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloudflare Tunnel for Android Build Web Monitor
+After=network.target build-monitor.service
+Wants=build-monitor.service
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://127.0.0.1:8080 --logfile /home/ubuntu/tunnel.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Build Control Bot
+After=network.target build-monitor.service build-tunnel.service
+Wants=build-monitor.service build-tunnel.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/evolution
+ExecStart=/usr/bin/python3 /home/ubuntu/evolution/tg_bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

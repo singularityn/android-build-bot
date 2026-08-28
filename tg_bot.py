@@ -310,6 +310,32 @@ def answer_callback(callback_id, text=None):
     except Exception:
         pass
 
+def extract_error_details():
+    failed_cmd_file = os.path.join(BUILD_DIR, "out/siso_failed_commands.sh")
+    failed_cmd = ""
+    error_output = ""
+
+    if os.path.exists(failed_cmd_file):
+        try:
+            with open(failed_cmd_file, "r") as f:
+                failed_cmd = f.read().strip()
+            res = subprocess.run(["bash", failed_cmd_file], cwd=BUILD_DIR, capture_output=True, text=True, timeout=15)
+            error_output = res.stderr.strip() or res.stdout.strip()
+        except Exception:
+            pass
+
+    if not error_output or len(error_output) < 20:
+        try:
+            log_files = subprocess.check_output(f"ls -t {BUILD_DIR}/build_*.log 2>/dev/null", shell=True, text=True).strip().split()
+            if log_files:
+                tail_lines = subprocess.check_output(["tail", "-n", "80", log_files[0]], text=True).split("\n")
+                matched = [l for l in tail_lines if any(k in l.lower() for k in ["error:", "fatal:", "failed:", "duplicate declaration", "syntax error"])]
+                error_output = "\n".join(matched[-10:]) if matched else "\n".join(tail_lines[-30:])
+        except Exception:
+            pass
+
+    return failed_cmd, error_output
+
 # --- Antigravity AI Auto-Fix Worker ---
 def execute_antigravity_fix_thread(chat_id):
     global bot_state
@@ -317,43 +343,37 @@ def execute_antigravity_fix_thread(chat_id):
         with state_lock:
             bot_state["is_fixing"] = True
 
+        failed_cmd, error_output = extract_error_details()
+        err_preview = error_output[:300] if error_output else "Menganalisis log build..."
+
         send_message(
             chat_id,
-            "🤖 <b>Antigravity AI Agent Aktif!</b>\n\n"
-            "🔍 <b>Langkah Kerja:</b>\n"
-            "1. Membaca <code>out/siso_failed_commands.sh</code> & log error terbaru\n"
-            "2. Mendiagnosis penyebab error (SELinux, Blueprint, Makefiles, C++)\n"
-            "3. Memperbaiki file kode sumber yang bermasalah secara langsung\n\n"
-            "⏳ <i>Sedang menganalisis codebase, mohon tunggu sebentar...</i>"
+            f"🤖 <b>Antigravity AI Agent Aktif!</b>\n\n"
+            f"🔍 <b>Error Terdeteksi:</b>\n<code>{html.escape(err_preview)}</code>\n\n"
+            f"⏳ <i>Antigravity sedang membuka file sumber dan menerapkan perbaikan kode secara otomatis...</i>"
         )
-
-        # Gather context from failed commands or log
-        failed_cmd_file = os.path.join(BUILD_DIR, "out/siso_failed_commands.sh")
-        context_hint = ""
-        if os.path.exists(failed_cmd_file):
-            try:
-                with open(failed_cmd_file, "r") as f:
-                    context_hint = f"\nPerintah yang gagal:\n{f.read()[:500]}"
-            except Exception:
-                pass
 
         prompt = (
-            "Ada build error saat mengompilasi custom ROM Android Evolution X untuk device lineage_sweet (sm6150-common / sweet). "
-            f"Periksa file error di out/siso_failed_commands.sh dan build log terbaru. {context_hint} "
-            "Cari tahu penyebab error pada kode sumber, sepolicy, Android.bp, atau makefile, dan perbaiki file yang bermasalah secara langsung. "
-            "Berikan ringkasan singkat perbaikan apa yang dilakukan."
+            "Terjadi build error saat mengompilasi custom ROM Android Evolution X untuk device lineage_sweet (sm6150-common / sweet).\n\n"
+            f"Detail error compiler:\n{error_output[:2000]}\n\n"
+            f"Perintah yang gagal:\n{failed_cmd[:600]}\n\n"
+            "Tugas Anda:\n"
+            "1. Buka file sumber/sepolicy/Android.bp/makefile yang disebutkan pada error di atas.\n"
+            "2. Lakukan perbaikan langsung pada file kode sumber yang bermasalah.\n"
+            "3. Berikan ringkasan singkat 2-3 kalimat penjelasan perbaikan."
         )
 
-        # Run agy in headless autonomous mode
         cmd = [
             AGY_BIN,
+            "--add-dir", BUILD_DIR,
             "-p", prompt,
             "--mode", "accept-edits",
-            "--dangerously-skip-permissions"
+            "--dangerously-skip-permissions",
+            "--print-timeout", "10m0s"
         ]
 
         start_t = time.time()
-        res = subprocess.run(cmd, cwd=BUILD_DIR, capture_output=True, text=True, timeout=300)
+        res = subprocess.run(cmd, cwd=BUILD_DIR, capture_output=True, text=True, timeout=600)
         elapsed = int(time.time() - start_t)
 
         # Check git status for modified files
